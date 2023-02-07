@@ -84,7 +84,7 @@ class TranscriptorBot:
 
         caption_content = TextMessageEventContent(
             msgtype=MessageType.TEXT,
-            body=result.get("text", "Sorry!!").strip(),
+            body=result.get("text", "Sorry, I was unable to transcribe a message.").strip(),
         )
 
         caption_content.set_reply(event.event_id)
