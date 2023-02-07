@@ -1,39 +1,52 @@
 from __future__ import annotations
 
 import asyncio
+import os
 
-from mautrix.client import Client
-from mautrix.types import (
-    EventType,
-    MessageEvent,
-    MessageType,
-    TextMessageEventContent,
-    EventID,
-    RoomID,
-)
-import torch
-import whisper
-import numpy as np
-import asyncio
 import ffmpeg
+import numpy as np
+import torch
+from mautrix.client import Client
+from mautrix.types import (EventType, Membership, MessageEvent, MessageType,
+                           StrippedStateEvent, TextMessageEventContent, UserID)
+from yarl import URL
+
+import whisper
+
+try:
+    import dotenv
+except ImportError:
+    print("You must install the dotenv library")
+    print("pip install python-dotenv")
+    exit()
+
+
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class TranscriptorBot:
 
-    user_id = "@transcriptorbot:example.com"
-    base_url = "https://matrix.server.com"
-    token = "syt_xyz"
+    user_id: UserID = os.getenv("MATRIX_USER_ID")
+    base_url: URL = URL(os.getenv("MATRIX_BASE_URL"))
+    token: str = os.getenv("MATRIX_TOKEN")
 
     def __init__(self):
         # Create the client to access Matrix.
         self.client = Client(
-            mxid=TranscriptorBot.user_id,
-            base_url=TranscriptorBot.base_url,
-            token=TranscriptorBot.token,
+            mxid=self.user_id,
+            base_url=self.base_url,
+            token=self.token,
         )
         self.client.ignore_initial_sync = True
         self.client.ignore_first_sync = True
 
+        self.model = whisper.load_model("base")
+
+        # Register two handlers, one for room memberships (invites) and another for room messages.
+
+        self.client.add_event_handler(EventType.ROOM_MEMBER, self.handle_invite)
         self.client.add_event_handler(EventType.ROOM_MESSAGE, self.handle_message)
 
     async def handle_message(self, event: MessageEvent) -> None:
@@ -42,38 +55,40 @@ class TranscriptorBot:
 
         audio_bytes = await self.client.download_media(url=event.content.url)
 
-        print(f"We are transcribing the audio sent by {event.sender}...")
+        asyncio.create_task(self.transcribe(audio_bytes=audio_bytes, event=event))
 
-        asyncio.create_task(
-            self.transcribe(
-                audio_bytes=audio_bytes, room_id=event.room_id, event_id=event.event_id
-            )
-        )
-        print(f"The audio sent by {event.sender} has been transcribed.")
+    async def handle_invite(self, event: StrippedStateEvent) -> None:
+        # Ignore the message if it's not an invitation for us.
+        if event.state_key == self.user_id and event.content.membership == Membership.INVITE:
+            # If it is, join the room.
+            await self.client.join_room(event.room_id)
 
     async def start(self):
-        print("Starting Transcriptor")
+        print("Starting TranscriptorBot")
         whoami = await self.client.whoami()
         print(f"\tConnected, I'm {whoami.user_id} using {whoami.device_id}")
         await self.client.start(None)
 
-    async def transcribe(self, audio_bytes: bytes, room_id: RoomID, event_id: EventID):
+    async def transcribe(self, audio_bytes: bytes, event: MessageEvent):
+
+        print(f"We are transcribing the audio sent by {event.sender}...")
+
         audio = self.load_audio(audio_bytes)
 
         audio = torch.from_numpy(audio)
 
-        model = whisper.load_model("base")
-
-        result = model.transcribe(audio, fp16=False)
+        result = self.model.transcribe(audio, fp16=False)
 
         caption_content = TextMessageEventContent(
             msgtype=MessageType.TEXT,
             body=result.get("text", "Sorry!!").strip(),
         )
 
-        caption_content.set_reply(event_id)
+        caption_content.set_reply(event.event_id)
 
-        await self.client.send_message(room_id=room_id, content=caption_content)
+        await self.client.send_message(room_id=event.room_id, content=caption_content)
+
+        print(f"The audio sent by {event.sender} has been transcribed.")
 
     def load_audio(self, file: str | bytes, sr: int = 16000):
         """
