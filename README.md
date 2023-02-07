@@ -14,3 +14,9 @@ MATRIX_TOKEN='syt_xyz'
 Run the bot
 - `python transcriptorbot.py`
 
+
+Screenshots:
+
+![image](https://user-images.githubusercontent.com/50601186/217347839-1383a6ce-f5de-42b8-ac6c-ea15b08ba639.png)
+
+
