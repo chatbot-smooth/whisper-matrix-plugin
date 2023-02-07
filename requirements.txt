@@ -1,0 +1,2 @@
+mautrix>=0.19,<0.20
+openai-whisper==20230124
