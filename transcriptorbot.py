@@ -59,7 +59,10 @@ class TranscriptorBot:
 
     async def handle_invite(self, event: StrippedStateEvent) -> None:
         # Ignore the message if it's not an invitation for us.
-        if event.state_key == self.user_id and event.content.membership == Membership.INVITE:
+        if (
+            event.state_key == self.user_id
+            and event.content.membership == Membership.INVITE
+        ):
             # If it is, join the room.
             await self.client.join_room(event.room_id)
 
